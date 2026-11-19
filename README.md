@@ -1,4 +1,4 @@
-# Plataforma de Inteligencia Urbana
+# Plataforma de Pulso Urbano
 
 Monorepositorio del prototipo para Aguascalientes capital. El backend valida sesiones, registra reportes y sirve incidentes a funcionarios. Las nueve funciones P0 se comprobaron: formulario tradicional, voz con sugerencias editables de Gemini, revisión ciudadana, GPS, persistencia, dashboard privado, mapa, detalle y estado, y prioridad explicable. Los estados «Resuelto» y «Descartado» son finales y de solo lectura.
 
