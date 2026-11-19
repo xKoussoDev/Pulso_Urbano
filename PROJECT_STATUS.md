@@ -5,7 +5,7 @@
 **Avance funcional verificado:** 9 de 9 funciones P0  
 **Tiempo de implementación previsto:** dos días intensivos, aproximadamente 20 horas efectivas  
 **Tiempo restante:** sin estimación fiable hasta medir horas efectivas de P0  
-**Próxima tarea:** publicar el commit local en un repositorio privado de GitHub cuando el usuario comparta la URL HTTPS del repositorio vacío.
+**Próxima tarea:** revisión final de la demo y sus datos ficticios, o la siguiente funcionalidad que el usuario priorice.
 
 ## Estado inicial
 
@@ -13,7 +13,7 @@ El repositorio contenía `PLAN.md` y los tres documentos de diseño. En P0.1 se 
 
 ## Preparación para GitHub
 
-El usuario pidió subir el monorepositorio a GitHub. Se detectó un `.git` interno creado por la plantilla de `mobile/`; su historial se conservó en `.mobile-git-backup/`, ignorado por el repositorio principal. La app móvil quedó preparada como archivos normales del monorepo. Se excluyeron `.env`, el manifiesto local de los cinco reportes demo, dependencias, salidas de compilación y archivos de IDE. Se revisaron los 80 archivos preparados: no se detectaron claves reales; `.env.example` solo contiene variables vacías y una URL de formato con contraseña de marcador de posición. El usuario todavía no ha creado ni compartido el repositorio GitHub; no existe remoto configurado.
+El usuario pidió subir el monorepositorio a GitHub. Se detectó un `.git` interno creado por la plantilla de `mobile/`; su historial se conservó en `.mobile-git-backup/`, ignorado por el repositorio principal. La app móvil quedó preparada como archivos normales del monorepo. Se excluyeron `.env`, el manifiesto local de los cinco reportes demo, dependencias, salidas de compilación y archivos de IDE. Se revisaron los 80 archivos preparados: no se detectaron claves reales; `.env.example` solo contiene variables vacías y una URL de formato con contraseña de marcador de posición. El primer commit local `437fcb1` se subió a la rama `main` de `https://github.com/xKoussoDev/Pulso_Urbano.git`; `git ls-remote` confirmó el mismo hash en GitHub y el árbol local limpio. El remoto `origin` quedó configurado para futuros cambios.
 
 | Elemento | Estado | Evidencia pendiente |
 |---|---|---|
