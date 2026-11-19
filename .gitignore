@@ -18,3 +18,5 @@ database/supabase/.temp/
 .DS_Store
 
 PLAN.md
+/backend/tests/
+/backend/scripts/
