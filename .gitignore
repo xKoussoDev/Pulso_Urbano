@@ -17,3 +17,4 @@ backend/.confirmation_demo_seed.json
 database/supabase/.temp/
 .DS_Store
 
+PLAN.md
