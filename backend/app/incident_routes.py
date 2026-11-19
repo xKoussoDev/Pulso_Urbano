@@ -104,6 +104,7 @@ def list_neighborhoods(staff: tuple[User, UUID] = Depends(require_staff)) -> dic
                           count(i.id) as incidents_count
                    from public.neighborhoods n
                    left join public.incidents i on i.neighborhood_id = n.id
+                     and i.status not in ('resolved', 'discarded')
                    where n.municipality_id = %s
                    group by n.id
                    order by incidents_count desc, n.name, n.settlement_type, n.source_key""",

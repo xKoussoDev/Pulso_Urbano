@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import LoadingMark from './LoadingMark'
 
 type Status = 'reported' | 'in_review' | 'confirmed' | 'in_progress' | 'resolved' | 'discarded'
 type Detail = {
@@ -82,10 +83,11 @@ export default function IncidentDetail({ id, token, apiUrl, onClose, onChanged }
   return <section className="card detail">
     <button className="secondary" onClick={onClose}>← Volver al mapa y listado</button>
     {message && <p className={message === 'Estado actualizado' ? 'success' : 'error'} role="status">{message}</p>}
-    {busy && <p>Actualizando…</p>}
+    {busy && !detail && <div className="loading-center"><LoadingMark label="Cargando detalle del incidente…" /></div>}
+    {busy && detail && <p role="status" className="muted">Actualizando…</p>}
     {detail && <>
-      <h2>{detail.title}</h2>
-      <p className="detail-meta">{detail.category.name} · {names[detail.status]} · {detail.reports_count} reporte(s) · {detail.confirmations_count} confirmación(es) de otras sesiones</p>
+      <div className="detail-head"><h2>{detail.title}</h2><span className={`status-pill status-${detail.status}`}>{names[detail.status]}</span></div>
+      <p className="detail-meta">{detail.category.name} · {detail.reports_count} reporte(s) · {detail.confirmations_count} confirmación(es) de otras sesiones</p>
       <p>{detail.description}</p>
       <p><strong>Gravedad declarada:</strong> {names[detail.severity] || detail.severity}</p>
       <p><strong>Ubicación:</strong> {detail.location.latitude.toFixed(5)}, {detail.location.longitude.toFixed(5)}</p>
@@ -109,7 +111,7 @@ export default function IncidentDetail({ id, token, apiUrl, onClose, onChanged }
           <label>Nota opcional, sin datos personales
             <textarea value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={500} rows={3} />
           </label>
-          <button onClick={() => void save()} disabled={busy}>Guardar estado</button>
+          <button className={nextStatus === 'discarded' ? 'danger' : ''} onClick={() => void save()} disabled={busy}>{busy ? 'Guardando…' : 'Guardar estado'}</button>
         </div>}
       </div>
       {transitions[detail.status].length === 0 && <p className="detail-meta">Este incidente está finalizado. Su detalle e historial son de solo lectura.</p>}

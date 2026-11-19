@@ -20,10 +20,16 @@ class NeighborhoodFilterTests(unittest.TestCase):
                 """select id, municipality_id, neighborhood_id,
                           extensions.ST_Y(location::extensions.geometry),
                           extensions.ST_X(location::extensions.geometry), status
-                   from public.incidents where neighborhood_id is not null limit 1"""
+                   from public.incidents where neighborhood_id is not null
+                   order by (status in ('resolved', 'discarded')) desc limit 1"""
             ).fetchone()
             self.assertIsNotNone(row)
             incident_id, municipality_id, neighborhood_id, lat, lon, status = row
+            active_count = connection.execute(
+                """select count(*) from public.incidents
+                   where neighborhood_id = %s and status not in ('resolved', 'discarded')""",
+                (neighborhood_id,),
+            ).fetchone()[0]
             other = connection.execute(
                 "select id from public.neighborhoods where municipality_id = %s and id <> %s limit 1",
                 (municipality_id, neighborhood_id),
@@ -38,7 +44,9 @@ class NeighborhoodFilterTests(unittest.TestCase):
                 self.assertEqual(catalog.status_code, 200, catalog.json())
                 self.assertEqual(len(catalog.json()["items"]), 1020)
                 self.assertIn(str(neighborhood_id), {item["id"] for item in catalog.json()["items"]})
-                self.assertGreater(catalog.json()["items"][0]["incidents_count"], 0)
+                selected_area = next(item for item in catalog.json()["items"]
+                                     if item["id"] == str(neighborhood_id))
+                self.assertEqual(selected_area["incidents_count"], active_count)
                 self.assertTrue(any(item["postal_code"] for item in catalog.json()["items"]))
                 self.assertTrue(any(item["postal_code"] is None for item in catalog.json()["items"]))
                 self.assertNotIn("boundary", str(catalog.json()))

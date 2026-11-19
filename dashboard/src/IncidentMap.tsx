@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
+import LoadingMark from './LoadingMark'
 
 type Point = {
   id: string
@@ -13,7 +14,7 @@ type Point = {
 }
 
 const colors: Record<string, string> = {
-  low: '#44805a', medium: '#2875a0', high: '#d17a18', critical: '#c62828',
+  low: '#196b4b', medium: '#1749a2', high: '#895500', critical: '#a42b40',
 }
 const rank: Record<string, number> = { low: 1, medium: 2, high: 3, critical: 4 }
 
@@ -37,6 +38,8 @@ export default function IncidentMap({ token, apiUrl, neighborhoodId, onSelect }:
   const [count, setCount] = useState(0)
   const [truncated, setTruncated] = useState(false)
   const [message, setMessage] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [retry, setRetry] = useState(0)
 
   useEffect(() => {
     if (!container.current) return
@@ -50,6 +53,7 @@ export default function IncidentMap({ token, apiUrl, neighborhoodId, onSelect }:
     const update = async () => {
       const bounds = map.getBounds()
       if (!bounds) return
+      setLoading(true)
       request?.abort()
       request = new AbortController()
       const bbox = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()].join(',')
@@ -91,22 +95,32 @@ export default function IncidentMap({ token, apiUrl, neighborhoodId, onSelect }:
         setCount(data.items.length)
         setTruncated(data.truncated)
         setMessage('')
+        setLoading(false)
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') return
         setMessage(error instanceof Error ? error.message : 'No se pudo cargar el mapa')
+        setLoading(false)
       }
     }
     map.on('load', update)
     map.on('moveend', update)
-    map.on('error', () => setMessage('No se pudo cargar el mapa de Mapbox'))
+    map.on('error', () => { setMessage('No se pudo cargar el mapa'); setLoading(false) })
     return () => { request?.abort(); markers.current.forEach((marker) => marker.remove()); map.remove() }
-  }, [token, apiUrl, neighborhoodId, onSelect])
+  }, [token, apiUrl, neighborhoodId, onSelect, retry])
 
   return <section className="card map-section">
     <h2>Mapa de incidentes</h2>
-    <p>Mueve o acerca el mapa para consultar otra zona. Los colores indican la prioridad actual.</p>
+    <p>Mueve o acerca el mapa para consultar otra zona.</p>
     {message && <p className="error" role="alert">{message}</p>}
-    <div className="map-view" ref={container} aria-label="Mapa de incidentes" />
+    {message && <button className="secondary" onClick={() => setRetry((value) => value + 1)}>Reintentar mapa</button>}
+    <div className="map-frame">
+      {loading && <div className="map-loading"><LoadingMark label="Cargando puntos del mapa…" /></div>}
+      <div className="map-view" ref={container} role="region" aria-label="Mapa de incidentes" />
+    </div>
+    <div className="map-legend" aria-label="Prioridad de los marcadores">
+      <span><i className="legend-dot low" /> Baja</span><span><i className="legend-dot medium" /> Media</span>
+      <span><i className="legend-dot high" /> Alta</span><span><i className="legend-dot critical" /> Crítica</span>
+    </div>
     <p className="map-caption">{count} incidentes en esta vista{truncated ? ' · Hay más puntos; acerca el mapa' : ''}</p>
   </section>
 }

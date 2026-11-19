@@ -28,7 +28,7 @@ class VoiceRouteTests(unittest.TestCase):
         cls.long_audio_path = Path(cls.temp_dir.name) / "long.m4a"
         subprocess.run(
             ["ffmpeg", "-nostdin", "-loglevel", "error", "-f", "lavfi", "-i",
-             "anullsrc=r=16000:cl=mono", "-t", "31", "-c:a", "aac", str(cls.long_audio_path)],
+             "anullsrc=r=16000:cl=mono", "-t", "11", "-c:a", "aac", str(cls.long_audio_path)],
             check=True,
         )
 
@@ -77,7 +77,7 @@ class VoiceRouteTests(unittest.TestCase):
         self.assertEqual(self.post_audio(b"not audio").status_code, 422)
         self.assertEqual(self.post_audio(b"x" * (10 * 1024 * 1024 + 1)).status_code, 413)
 
-    def test_rejects_audio_over_30_seconds(self):
+    def test_rejects_audio_over_10_seconds(self):
         response = self.post_audio(self.long_audio_path.read_bytes())
         self.assertEqual(response.status_code, 422)
 

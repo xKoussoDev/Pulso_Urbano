@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Button, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Animated, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as Crypto from 'expo-crypto';
 import { File, UploadType } from 'expo-file-system';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
@@ -7,6 +7,9 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { supabase } from './supabase';
 import VoiceRecorder from './VoiceRecorder';
+import WelcomeScreen from './WelcomeScreen';
+import { colors, space } from './theme';
+import { ActionButton, LoadingMark, useReducedMotion } from './ui';
 
 type Category = { id: string; code: string; name: string; default_severity: string };
 type Severity = 'low' | 'medium' | 'high' | 'critical';
@@ -36,7 +39,7 @@ const severities: { value: Severity; label: string }[] = [
 ];
 
 async function getToken(): Promise<string> {
-  if (!supabase) throw new Error('Configura la URL y la clave publicable de Supabase en mobile/.env');
+  if (!supabase) throw new Error('El servicio no está disponible. Intenta más tarde.');
   const { data, error } = await supabase.auth.getSession();
   if (error) throw new Error('No se pudo recuperar la sesión');
   if (data.session) {
@@ -53,7 +56,7 @@ export default function App() {
   const [categoryId, setCategoryId] = useState('');
   const [description, setDescription] = useState('');
   const [duration, setDuration] = useState('');
-  const [severity, setSeverity] = useState<Severity>('medium');
+  const [severity, setSeverity] = useState<Severity | ''>('');
   const [coordinates, setCoordinates] = useState<Coordinates | null>(null);
   const [screen, setScreen] = useState<Screen>('form');
   const [requestId, setRequestId] = useState('');
@@ -68,18 +71,44 @@ export default function App() {
   const [inputMethod, setInputMethod] = useState<'traditional' | 'voice'>('traditional');
   const [suggestedFields, setSuggestedFields] = useState<string[]>([]);
   const [nearby, setNearby] = useState<NearbyIncident[]>([]);
+  const [welcomeDone, setWelcomeDone] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(true);
+  const [initializing, setInitializing] = useState(true);
+  const [welcomeFade] = useState(() => new Animated.Value(1));
+  const [screenOpacity] = useState(() => new Animated.Value(1));
+  const reducedMotion = useReducedMotion();
+
+  useEffect(() => {
+    const timer = setTimeout(() => setWelcomeDone(true), 1500);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!welcomeDone || initializing) return;
+    const animation = Animated.timing(welcomeFade, { toValue: 0, duration: reducedMotion ? 0 : 180, useNativeDriver: true });
+    animation.start(({ finished }) => { if (finished) setShowWelcome(false); });
+    return () => animation.stop();
+  }, [welcomeDone, initializing, reducedMotion, welcomeFade]);
+
+  useEffect(() => {
+    if (reducedMotion) { screenOpacity.setValue(1); return; }
+    screenOpacity.setValue(0);
+    const animation = Animated.timing(screenOpacity, { toValue: 1, duration: 180, useNativeDriver: true });
+    animation.start();
+    return () => animation.stop();
+  }, [screen, reducedMotion, screenOpacity]);
 
   const loadCategories = async () => {
     setBusy(true); setMessage('');
     try {
-      if (!apiUrl) throw new Error('Configura EXPO_PUBLIC_API_URL en mobile/.env');
+      if (!apiUrl) throw new Error('El servicio no está disponible. Intenta más tarde.');
       const token = await getToken();
       const response = await fetch(`${apiUrl}/categories`, { headers: { Authorization: `Bearer ${token}` } });
-      if (!response.ok) throw new Error(`No se pudieron cargar las categorías (HTTP ${response.status})`);
+      if (!response.ok) throw new Error('No se pudieron cargar las categorías. Intenta de nuevo.');
       setCategories((await response.json()).items);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'No se pudo conectar');
-    } finally { setBusy(false); }
+    } finally { setBusy(false); setInitializing(false); }
   };
 
   useEffect(() => {
@@ -141,7 +170,7 @@ export default function App() {
   };
 
   const processVoice = async (uri: string): Promise<boolean> => {
-    if (!apiUrl) throw new Error('Configura EXPO_PUBLIC_API_URL en mobile/.env');
+    if (!apiUrl) throw new Error('El servicio no está disponible. Intenta más tarde.');
     const token = await getToken();
     const file = new File(uri);
     const controller = new AbortController();
@@ -159,7 +188,7 @@ export default function App() {
     } finally { clearTimeout(timeout); }
     const data: VoiceResponse = JSON.parse(response.body);
     if (response.status < 200 || response.status >= 300) {
-      throw new Error(data.error?.message || `No se pudo transcribir (HTTP ${response.status})`);
+      throw new Error(data.error?.message || 'No se pudo transcribir. Intenta de nuevo.');
     }
     const text = data.draft?.description || data.transcription;
     if (!text) {
@@ -194,16 +223,18 @@ export default function App() {
     setMessage(data.reason === 'REDACTION_REVIEW_REQUIRED'
       ? 'Se omitieron posibles datos personales. Revisa y corrige la descripción antes de enviar.'
       : applied.length > 0
-        ? `La IA llenó ${applied.join(', ')} como propuesta. Revisa y corrige todos los campos antes de enviar.`
+        ? 'Revisa los campos sugeridos antes de enviar.'
         : 'Solo se llenó la descripción. Elige y revisa los demás campos antes de enviar.');
     return true;
   };
 
   const review = () => {
     if (voiceRecording) return setMessage('Detén la grabación antes de revisar el formulario');
-    if (!categoryId) return setMessage('Selecciona una categoría');
-    if (description.trim().length < 10) return setMessage('Describe el problema con al menos 10 caracteres');
-    if (!coordinates) return setMessage('Obtén la ubicación antes de continuar');
+    if (!categories.some((item) => item.id === categoryId) || !description.trim() || !severity || !coordinates) {
+      Alert.alert('Favor de llenar todos los campos antes de REVISAR REPORTE');
+      return;
+    }
+    if (description.trim().length < 10) return Alert.alert('Describe el problema con al menos 10 caracteres');
     setRequestId(Crypto.randomUUID()); setMessage(''); setScreen('review');
   };
 
@@ -240,7 +271,7 @@ export default function App() {
   };
 
   const uploadPhotos = async (savedReportId: string, pending: string[]) => {
-    if (!apiUrl) throw new Error('Configura EXPO_PUBLIC_API_URL en mobile/.env');
+    if (!apiUrl) throw new Error('El servicio no está disponible. Intenta más tarde.');
     const token = await getToken();
     for (const uri of pending) {
       const file = new File(uri);
@@ -258,7 +289,7 @@ export default function App() {
           : `No se pudo subir la foto: ${error instanceof Error ? error.message : 'error desconocido'}`);
       } finally { clearTimeout(timeout); }
       if (response.status < 200 || response.status >= 300) {
-        let detail = `HTTP ${response.status}`;
+        let detail = 'No se pudo subir la foto';
         try { detail = JSON.parse(response.body).error?.message || detail; } catch { /* Respuesta sin JSON. */ }
         throw new Error(detail);
       }
@@ -281,7 +312,7 @@ export default function App() {
           location: coordinates, location_source: 'gps', input_method: inputMethod }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error?.message || `No se pudo enviar (HTTP ${response.status})`);
+      if (!response.ok) throw new Error(data.error?.message || 'No se pudo enviar. Intenta de nuevo.');
       setReportId(data.id); setIncidentId(data.incident_id); setScreen('sent');
       if (photos.length > 0) {
         try {
@@ -308,120 +339,175 @@ export default function App() {
       const file = new File(uri);
       try { if (file.exists) file.delete(); } catch { /* El caché local se puede limpiar al cerrar la app. */ }
     }
-    setCategoryId(''); setDescription(''); setDuration(''); setSeverity('medium');
+    setCategoryId(''); setDescription(''); setDuration(''); setSeverity('');
     setCoordinates(null); setRequestId(''); setIncidentId(''); setReportId(''); setPhotos([]); setUploadedPhotos(0);
     setMessage(''); setNotice(''); setInputMethod('traditional'); setSuggestedFields([]); setNearby([]); setScreen('form');
   };
   const selectedCategory = categories.find((item) => item.id === categoryId);
   const photoPreviews = photos.map((uri, index) => <View key={uri} style={styles.photoItem}>
     <Image source={{ uri }} style={styles.photoImage} accessibilityLabel={`Foto ${index + 1} del reporte`} />
-    {screen === 'form' ? <Button title="Quitar" onPress={() => removePhoto(uri)} disabled={busy} /> : null}
+    {screen === 'form' ? <ActionButton title="Quitar foto" variant="danger" onPress={() => removePhoto(uri)} disabled={busy} /> : null}
   </View>);
 
+  if (showWelcome) return <Animated.View style={{ flex: 1, opacity: welcomeFade }}><WelcomeScreen ready={!initializing} /></Animated.View>;
+
   return (
-    <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-      <Text style={styles.title}>Reporte urbano</Text>
-      <Text style={styles.note}>Demo con reportes ficticios. No escribas nombres, teléfonos, correos ni domicilios personales.</Text>
-      {message ? <Text style={styles.error}>{message}</Text> : null}
-      {notice ? <Text style={styles.notice}>{notice}</Text> : null}
-      {busy ? <ActivityIndicator style={styles.loading} /> : null}
+    <View style={styles.root}>
+    <ScrollView style={styles.page} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+      <View style={styles.brandRow}><Image source={require('./assets/pulso-icon.png')} style={styles.brandImage} accessible={false} />
+        <Text style={styles.brandName}>PULSO URBANO</Text></View>
+      <Text style={styles.title}>{screen === 'form' ? 'Nuevo reporte' : screen === 'review' ? 'Revisa tu reporte' : screen === 'sent' ? 'Reporte recibido' : 'Cerca de ti'}</Text>
+      {message ? <Text style={styles.error} accessibilityRole="alert">{message}</Text> : null}
+      {notice ? <Text style={styles.notice} accessibilityRole="alert">{notice}</Text> : null}
+      <Animated.View style={{ opacity: screenOpacity, transform: [{ translateY: screenOpacity.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }}>
       {screen === 'form' && <>
-        <Button title="Ver incidentes cercanos" onPress={() => { void openNearby(); }} disabled={busy} />
-        <Text style={styles.note}>Si el problema ya está reportado, puedes confirmarlo sin crear otro reporte.</Text>
-        <VoiceRecorder onRecordingChange={setVoiceRecording} onAudioReady={processVoice} />
-        {suggestedFields.length > 0 ? <Text style={styles.suggestion}>La IA llenó inicialmente: {suggestedFields.join(', ')}. Puedes cambiar cualquiera de estos datos.</Text> : null}
-        <Text style={styles.label}>¿Qué problema encontraste?</Text>
-        {categories.length === 0 && !busy ? <Button title="Reintentar carga de categorías" onPress={loadCategories} /> : null}
-        <View style={styles.options}>{categories.map((item) =>
-          <Pressable key={item.id} onPress={() => setCategoryId(item.id)} style={[styles.option, categoryId === item.id && styles.selected]}>
-            <Text style={styles.optionText}>{item.name}</Text>
-          </Pressable>)}</View>
-        <Text style={styles.label}>Descripción</Text>
-        <TextInput style={[styles.input, styles.multiline]} multiline value={description} onChangeText={setDescription} placeholder="Describe el problema sin datos personales" maxLength={1000} />
-        <Text style={styles.label}>¿Desde cuándo? (opcional)</Text>
-        <TextInput style={styles.input} value={duration} onChangeText={setDuration} placeholder="Ej. tres días" maxLength={100} />
-        <Text style={styles.label}>Gravedad observada</Text>
-        <View style={styles.options}>{severities.map((item) =>
-          <Pressable key={item.value} onPress={() => setSeverity(item.value)} style={[styles.option, severity === item.value && styles.selected]}>
-            <Text style={styles.optionText}>{item.label}</Text>
-          </Pressable>)}</View>
-        <Text style={styles.label}>Ubicación GPS</Text>
-        <Button title={coordinates ? 'Actualizar ubicación' : 'Obtener ubicación'} onPress={useGps} disabled={busy} />
-        <Text style={styles.note}>{coordinates ? `${coordinates.latitude.toFixed(5)}, ${coordinates.longitude.toFixed(5)}` : 'Aún no se ha obtenido la ubicación'}</Text>
-        <Text style={styles.label}>Fotografías (opcional, máximo 2)</Text>
-        <Text style={styles.note}>Usa solo imágenes ficticias. Revisa que no aparezcan personas, placas ni datos personales.</Text>
-        <Button title="Elegir de galería" onPress={() => { void addPhoto('library'); }} disabled={busy || photos.length >= 2} />
-        <View style={styles.smallGap} />
-        <Button title="Tomar foto" onPress={() => { void addPhoto('camera'); }} disabled={busy || photos.length >= 2} />
-        <View style={styles.photoList}>{photoPreviews}</View>
-        <Button title="Revisar reporte" onPress={review} disabled={busy || voiceRecording || categories.length === 0} />
+        <View style={styles.progress}><Text style={styles.progressText}>PASO 1 DE 2</Text><Text style={styles.progressDetail}>Cuéntanos qué sucede</Text></View>
+        <View style={styles.section}>
+          <Text style={styles.sectionNumber}>01  ·  PROBLEMA</Text>
+          <Text style={styles.sectionTitle}>¿Qué problema encontraste?</Text>
+          <VoiceRecorder onRecordingChange={setVoiceRecording} onAudioReady={processVoice} />
+          <Text style={styles.label}>O selecciona una categoría</Text>
+          {categories.length === 0 && !busy ? <ActionButton title="Reintentar carga de categorías" variant="secondary" onPress={loadCategories} /> : null}
+          <View style={styles.options}>{categories.map((item) =>
+            <Pressable key={item.id} accessibilityRole="radio" accessibilityState={{ selected: categoryId === item.id }}
+              onPress={() => setCategoryId(item.id)} style={[styles.option, categoryId === item.id && styles.selected]}>
+              <Text style={[styles.optionText, categoryId === item.id && styles.selectedText]}>{item.name}</Text>
+            </Pressable>)}</View>
+        </View>
+        <View style={styles.section}>
+          <Text style={styles.sectionNumber}>02  ·  DESCRIPCIÓN</Text>
+          <Text style={styles.sectionTitle}>Describe lo que sucede</Text>
+          <Text style={styles.label}>Descripción</Text>
+          <TextInput style={[styles.input, styles.multiline]} multiline value={description} onChangeText={setDescription}
+            accessibilityLabel="Descripción del problema" placeholder="Escribe aquí, sin datos personales" placeholderTextColor={colors.muted} maxLength={1000} />
+          {suggestedFields.length > 0 ? <Text style={styles.suggestion}>Revisa los datos sugeridos; puedes cambiarlos.</Text> : null}
+          <Text style={styles.label}>¿Desde cuándo? <Text style={styles.optional}>(opcional)</Text></Text>
+          <TextInput style={styles.input} value={duration} onChangeText={setDuration} accessibilityLabel="Desde cuándo ocurre"
+            placeholder="Ej. desde hace tres días" placeholderTextColor={colors.muted} maxLength={100} />
+          <Text style={styles.label}>Gravedad observada</Text>
+          <View style={styles.options}>{severities.map((item) =>
+            <Pressable key={item.value} accessibilityRole="radio" accessibilityState={{ selected: severity === item.value }}
+              onPress={() => setSeverity(item.value)} style={[styles.option, severity === item.value && styles.selected]}>
+              <Text style={[styles.optionText, severity === item.value && styles.selectedText]}>{item.label}</Text>
+            </Pressable>)}</View>
+        </View>
+        <View style={styles.section}>
+          <Text style={styles.sectionNumber}>03  ·  EVIDENCIA</Text>
+          <Text style={styles.sectionTitle}>Agrega fotografías <Text style={styles.optional}>(opcional)</Text></Text>
+          <Text style={styles.note}>Máximo 2. Evita personas, placas y datos personales.</Text>
+          <ActionButton title="Elegir de galería" variant="secondary" onPress={() => { void addPhoto('library'); }} disabled={busy || photos.length >= 2} />
+          <View style={styles.smallGap} />
+          <ActionButton title="Tomar foto" variant="secondary" onPress={() => { void addPhoto('camera'); }} disabled={busy || photos.length >= 2} />
+          {photos.length > 0 ? <View style={styles.photoList}>{photoPreviews}</View> : null}
+        </View>
+        <View style={styles.section}>
+          <Text style={styles.sectionNumber}>04  ·  UBICACIÓN</Text>
+          <Text style={styles.sectionTitle}>Confirma dónde ocurre</Text>
+          <ActionButton title={coordinates ? 'Actualizar ubicación' : 'Obtener mi ubicación'} variant="secondary" onPress={useGps} disabled={busy} />
+          {coordinates ? <Text style={styles.verified}>✓ Ubicación obtenida</Text> : null}
+        </View>
+        <ActionButton title="Revisar reporte" onPress={review} disabled={busy || voiceRecording || categories.length === 0} />
+        <View style={styles.nearbyLink}><Text style={styles.nearbyText}>¿Ya se reportó este problema?</Text>
+          <ActionButton title="Ver incidentes cercanos" variant="secondary" onPress={() => { void openNearby(); }} disabled={busy} /></View>
       </>}
       {screen === 'review' && <>
-        <Text style={styles.subtitle}>Revisa antes de confirmar</Text>
-        <Text style={styles.summary}>Categoría: {selectedCategory?.name}</Text>
-        <Text style={styles.summary}>Descripción: {description.trim()}</Text>
-        <Text style={styles.summary}>Desde cuándo: {duration.trim() || 'No indicado'}</Text>
-        <Text style={styles.summary}>Gravedad: {severities.find((item) => item.value === severity)?.label}</Text>
-        <Text style={styles.summary}>Origen: {inputMethod === 'voice' ? 'voz (texto corregible)' : 'formulario'}</Text>
-        {suggestedFields.length > 0 ? <Text style={styles.note}>La IA sugirió inicialmente {suggestedFields.join(', ')}. Confirma que los valores mostrados sean correctos.</Text> : null}
-        <Text style={styles.summary}>GPS: {coordinates?.latitude.toFixed(5)}, {coordinates?.longitude.toFixed(5)}</Text>
-        <Text style={styles.summary}>Fotografías: {photos.length}</Text>
-        <View style={styles.photoList}>{photoPreviews}</View>
-        <Text style={styles.note}>Si algo está mal, vuelve y corrígelo. El reporte se guarda solo al confirmar.</Text>
-        <Button title="Editar datos" onPress={() => { setRequestId(''); setMessage(''); setScreen('form'); }} disabled={busy} />
-        <View style={styles.gap} /><Button title="Confirmar y enviar" onPress={send} disabled={busy} />
+        <View style={styles.progress}><Text style={styles.progressText}>PASO 2 DE 2</Text><Text style={styles.progressDetail}>Confirma que todo esté correcto</Text></View>
+        <View style={styles.section}>
+          <Text style={styles.summaryLabel}>PROBLEMA</Text><Text style={styles.summaryValue}>{selectedCategory?.name}</Text>
+          <Text style={styles.summaryLabel}>DESCRIPCIÓN</Text><Text style={styles.summaryValue}>{description.trim()}</Text>
+          <Text style={styles.summaryLabel}>DESDE CUÁNDO</Text><Text style={styles.summaryValue}>{duration.trim() || 'No indicado'}</Text>
+          <Text style={styles.summaryLabel}>GRAVEDAD</Text><Text style={styles.summaryValue}>{severities.find((item) => item.value === severity)?.label}</Text>
+          <Text style={styles.summaryLabel}>UBICACIÓN</Text><Text style={styles.verified}>✓ Confirmada por GPS</Text>
+          <Text style={styles.summaryLabel}>FOTOGRAFÍAS</Text><Text style={styles.summaryValue}>{photos.length}</Text>
+          {photos.length > 0 ? <View style={styles.photoList}>{photoPreviews}</View> : null}
+        </View>
+        <ActionButton title="Confirmar y enviar" onPress={send} disabled={busy} busy={busy} />
+        <View style={styles.smallGap} />
+        <ActionButton title="Editar datos" variant="secondary" onPress={() => { setRequestId(''); setMessage(''); setScreen('form'); }} disabled={busy} />
       </>}
       {screen === 'sent' && <>
-        <Text style={styles.subtitle}>Reporte enviado</Text>
-        <Text style={styles.summary}>Tu incidente se registró con estado “reportado”.</Text>
-        <Text style={styles.note}>ID del incidente: {incidentId}</Text>
-        <Text style={styles.summary}>Fotografías guardadas: {uploadedPhotos}{photos.length > 0 ? `; pendientes: ${photos.length}` : ''}</Text>
-        {busy && photos.length > 0 ? <Text style={styles.note}>Subiendo fotografías...</Text> : null}
+        <View style={[styles.section, styles.sentCard]}>
+          <Text style={styles.sentIcon}>✓</Text>
+          <Text style={styles.sectionTitle}>Tu reporte quedó registrado</Text>
+          <Text style={styles.note}>Folio: {incidentId}</Text>
+          {uploadedPhotos + photos.length > 0 ? <Text style={styles.note}>Fotografías guardadas: {uploadedPhotos}{photos.length > 0 ? ` · Pendientes: ${photos.length}` : ''}</Text> : null}
+        </View>
         {photos.length > 0 ? <>
           <View style={styles.photoList}>{photoPreviews}</View>
-          <Button title="Reintentar fotos pendientes" onPress={() => { void retryPhotos(); }} disabled={busy} />
+          <ActionButton title="Reintentar fotos pendientes" variant="secondary" onPress={() => { void retryPhotos(); }} disabled={busy} />
           <Text style={styles.note}>Si creas otro reporte, las fotos pendientes no se enviarán.</Text>
         </> : null}
-        <Button title="Crear otro reporte" onPress={reset} disabled={busy} />
+        <ActionButton title="Crear otro reporte" onPress={reset} disabled={busy} />
       </>}
       {screen === 'nearby' && <>
-        <Text style={styles.subtitle}>Incidentes cercanos</Text>
-        <Text style={styles.note}>Se muestran problemas activos hasta 1 km de ti, sin dirección exacta. Confirma solo si ves que el problema sigue ocurriendo. Tus propios reportes no aparecen aquí.</Text>
-        {nearby.length === 0 ? <Text style={styles.summary}>No hay incidentes de otras sesiones cerca de ti.</Text> : null}
+        <Text style={styles.note}>Confirma solo si el problema sigue ocurriendo.</Text>
+        {nearby.length === 0 ? <View style={styles.section}><Text style={styles.summaryValue}>No hay incidentes de otras personas cerca de ti.</Text></View> : null}
         {nearby.map((item) => <View key={item.id} style={styles.nearbyItem}>
           <Text style={styles.nearbyTitle}>{item.category_name}</Text>
           <Text style={styles.note}>A unos {item.distance_m_approx} m · reportado el {item.reported_on}</Text>
-          <Text style={styles.summary}>Confirmaciones de otras sesiones: {item.confirmations_count}</Text>
-          <Button title={item.confirmed_by_me ? 'Ya confirmaste este incidente' : 'Confirmar que sigue ocurriendo'}
+          <Text style={styles.summaryValue}>Confirmaciones: {item.confirmations_count}</Text>
+          <ActionButton title={item.confirmed_by_me ? 'Ya confirmaste este incidente' : 'Confirmar que sigue ocurriendo'}
             onPress={() => { void confirmNearby(item.id); }} disabled={busy || item.confirmed_by_me} />
         </View>)}
-        <Button title="Volver al formulario" onPress={() => { setMessage(''); setNotice(''); setScreen('form'); }} disabled={busy} />
+        <ActionButton title="Volver al formulario" variant="secondary" onPress={() => { setMessage(''); setNotice(''); setScreen('form'); }} disabled={busy} />
       </>}
+      </Animated.View>
     </ScrollView>
+    {busy ? <View style={styles.busyToast} pointerEvents="none"><LoadingMark label={screen === 'sent' ? 'Guardando fotografías…' : screen === 'nearby' ? 'Consultando incidentes…' : 'Procesando…'} /></View> : null}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 24, paddingTop: 60, paddingBottom: 60, backgroundColor: '#fff', flexGrow: 1 },
-  title: { fontSize: 28, fontWeight: '700', color: '#14324a', marginBottom: 10 },
-  subtitle: { fontSize: 22, fontWeight: '700', color: '#14324a', marginBottom: 16 },
-  label: { fontSize: 16, fontWeight: '600', marginTop: 18, marginBottom: 8 },
-  note: { color: '#53636f', lineHeight: 20, marginBottom: 18, marginTop: 8 },
-  error: { color: '#a52828', marginVertical: 12 },
-  notice: { color: '#27633d', marginVertical: 12 },
-  input: { borderColor: '#aebbc5', borderWidth: 1, borderRadius: 8, padding: 12, fontSize: 16 },
-  multiline: { minHeight: 110, textAlignVertical: 'top' },
-  options: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  option: { borderWidth: 1, borderColor: '#aebbc5', borderRadius: 8, padding: 10 },
-  selected: { borderColor: '#0866a3', backgroundColor: '#d9efff' },
-  optionText: { color: '#14324a' },
-  summary: { fontSize: 16, lineHeight: 23, marginBottom: 14 },
-  suggestion: { color: '#7a4d00', backgroundColor: '#fff4d6', padding: 12, borderRadius: 8, marginBottom: 8 },
-  loading: { marginVertical: 12 }, gap: { height: 16 },
-  smallGap: { height: 8 },
-  photoList: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginVertical: 12 },
-  photoItem: { gap: 6 },
-  photoImage: { width: 120, height: 120, borderRadius: 8 },
-  nearbyItem: { borderColor: '#d7e0e6', borderWidth: 1, borderRadius: 8, padding: 16, marginBottom: 14 },
-  nearbyTitle: { fontSize: 18, fontWeight: '700', color: '#14324a' },
+  root: { flex: 1, backgroundColor: colors.canvas },
+  page: { flex: 1, backgroundColor: colors.canvas },
+  busyToast: { position: 'absolute', bottom: 18, left: 18, right: 18, maxWidth: 360, alignSelf: 'center',
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, borderRadius: 18, elevation: 7,
+    shadowColor: colors.ink, shadowOpacity: 0.14, shadowRadius: 16, shadowOffset: { width: 0, height: 6 } },
+  container: { width: '100%', maxWidth: 640, alignSelf: 'center', paddingHorizontal: 18, paddingTop: 58, paddingBottom: 72, flexGrow: 1 },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.md },
+  brandImage: { width: 40, height: 40, borderRadius: 12 },
+  brandName: { color: colors.primaryDark, fontSize: 13, fontWeight: '800', letterSpacing: 1.3 },
+  title: { fontSize: 32, lineHeight: 38, fontWeight: '800', color: colors.ink, marginBottom: space.lg },
+  progress: { backgroundColor: colors.softBlue, borderRadius: 16, padding: space.md, marginBottom: space.md,
+    borderLeftWidth: 4, borderLeftColor: colors.cyan },
+  progressText: { color: colors.primary, fontSize: 12, fontWeight: '800', letterSpacing: 1.1, marginBottom: space.xs },
+  progressDetail: { color: colors.ink, fontSize: 16, fontWeight: '600' },
+  section: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, borderRadius: 18,
+    padding: space.md, marginBottom: space.md },
+  sectionNumber: { color: colors.violet, fontSize: 12, fontWeight: '800', letterSpacing: 1, marginBottom: space.sm },
+  sectionTitle: { color: colors.ink, fontSize: 21, lineHeight: 28, fontWeight: '800', marginBottom: space.md },
+  label: { color: colors.ink, fontSize: 16, fontWeight: '700', marginTop: space.md, marginBottom: space.sm },
+  optional: { color: colors.muted, fontSize: 15, fontWeight: '400' },
+  note: { color: colors.muted, fontSize: 15, lineHeight: 22, marginBottom: space.md },
+  error: { color: colors.danger, backgroundColor: colors.dangerBg, borderRadius: 12, padding: space.md, marginBottom: space.md, fontSize: 16 },
+  notice: { color: colors.success, backgroundColor: colors.successBg, borderRadius: 12, padding: space.md, marginBottom: space.md, fontSize: 16 },
+  input: { minHeight: 54, borderColor: colors.line, borderWidth: 1.5, borderRadius: 12, padding: 14,
+    fontSize: 16, color: colors.ink, backgroundColor: colors.surface },
+  multiline: { minHeight: 130, textAlignVertical: 'top' },
+  options: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+  option: { flexGrow: 1, flexBasis: '44%', minWidth: 112, minHeight: 54, borderWidth: 1.5,
+    borderColor: colors.line, borderRadius: 12, padding: 12, alignItems: 'center', justifyContent: 'center' },
+  selected: { borderColor: colors.primary, backgroundColor: colors.softBlue },
+  optionText: { color: colors.ink, fontSize: 15, fontWeight: '600', textAlign: 'center' },
+  selectedText: { color: colors.primaryDark, fontWeight: '800' },
+  verified: { color: colors.success, fontSize: 16, fontWeight: '700', marginTop: space.md },
+  suggestion: { color: colors.warning, backgroundColor: colors.warningBg, padding: space.md,
+    borderRadius: 12, marginTop: space.sm },
+  summaryLabel: { color: colors.muted, fontSize: 12, fontWeight: '800', letterSpacing: 1,
+    marginTop: space.md, marginBottom: space.xs },
+  summaryValue: { color: colors.ink, fontSize: 17, lineHeight: 24 },
+  smallGap: { height: space.sm },
+  photoList: { flexDirection: 'row', flexWrap: 'wrap', gap: space.md, marginVertical: space.md },
+  photoItem: { gap: space.sm },
+  photoImage: { width: 120, height: 120, borderRadius: 12 },
+  nearbyLink: { marginTop: space.xl, gap: space.sm },
+  nearbyText: { textAlign: 'center', color: colors.muted, fontSize: 16 },
+  nearbyItem: { backgroundColor: colors.surface, borderColor: colors.line, borderWidth: 1,
+    borderRadius: 18, padding: space.md, marginBottom: space.md, gap: space.sm },
+  nearbyTitle: { fontSize: 20, fontWeight: '800', color: colors.ink },
+  sentCard: { alignItems: 'center', paddingVertical: space.xl },
+  sentIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.successBg,
+    color: colors.success, textAlign: 'center', textAlignVertical: 'center', fontSize: 30,
+    fontWeight: '800', overflow: 'hidden', marginBottom: space.md },
 });

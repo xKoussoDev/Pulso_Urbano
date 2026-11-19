@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './supabase'
 import IncidentDetail from './IncidentDetail'
+import LoadingMark from './LoadingMark'
 import './App.css'
 
 type Incident = {
@@ -153,11 +154,12 @@ function App() {
 
   const client = supabase
   if (!client || !apiUrl) return <main className="page"><h1>Configura el dashboard</h1><p>Completa las variables VITE_ en dashboard/.env.</p></main>
-  if (checking) return <main className="page"><p>Comprobando sesión…</p></main>
+  if (checking) return <main className="page loading-center"><LoadingMark label="Comprobando sesión…" /></main>
 
   return <main className="page">
     <header className="header">
-      <div><p className="eyebrow">Inteligencia Urbana</p><h1>Panel de incidentes</h1></div>
+      <div className="brand"><img className="brand-icon" src="/pulso-icon.png" alt="" />
+        <div><p className="eyebrow">PULSO URBANO · AGUASCALIENTES</p><h1>Panel de incidentes</h1></div></div>
       {session && <button className="secondary" onClick={() => void client.auth.signOut()}>Cerrar sesión</button>}
     </header>
     {message && <p className="error" role="alert">{message}</p>}
@@ -167,17 +169,21 @@ function App() {
       <form onSubmit={signIn}>
         <label>Correo<input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
         <label>Contraseña<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
-        <button disabled={busy} type="submit">Entrar</button>
+        <button disabled={busy} type="submit">{busy ? 'Ingresando…' : 'Entrar'}</button>
       </form>
+      {busy && <LoadingMark label="Iniciando sesión…" />}
     </section>}
     {session && !role && <section className="card"><h2>Verificando acceso</h2>
-      <p>{busy ? 'Cargando el mapa y los incidentes…' : 'No se pudo completar la verificación de acceso.'}</p>
+      {busy ? <LoadingMark label="Cargando incidentes…" /> : <p>No se pudo completar la verificación de acceso.</p>}
       {!busy && <button onClick={() => setAuthRetry((value) => value + 1)}>Reintentar</button>}
     </section>}
     {session && role && role !== 'staff' && <section className="card"><h2>Acceso no autorizado</h2><p>Esta cuenta no está registrada como funcionario activo.</p></section>}
     {session && role === 'staff' && selectedId && <IncidentDetail id={selectedId} token={session.access_token} apiUrl={apiUrl} onClose={() => setSelectedId(null)} onChanged={() => refresh()} />}
     {session && role === 'staff' && !selectedId && <>
+      <div className={`workspace-grid${view === 'closed' ? ' no-map' : ''}`}>
       <section className="card neighborhood-filter">
+        <p className="eyebrow">EXPLORA TU MUNICIPIO</p>
+        <h2>Filtrar por colonia</h2>
         <div className="neighborhood-search">
           <label>Buscar colonia o asentamiento
             <input value={nameSearch} disabled={busy} placeholder="Escribe un nombre"
@@ -193,34 +199,36 @@ function App() {
           onChange={(event) => void changeNeighborhood(event.target.value)}>
           <option value="">Todos los asentamientos</option>
           {visibleNeighborhoods.map((area) => <option key={area.id} value={area.id}>
-            {area.name} · {area.settlement_type} · CP {area.postal_code || 'sin dato'} · {area.incidents_count} incidente{area.incidents_count === 1 ? '' : 's'}
+            {area.name} · {area.settlement_type} · CP {area.postal_code || 'sin dato'} · {area.incidents_count} incidente{area.incidents_count === 1 ? '' : 's'} activo{area.incidents_count === 1 ? '' : 's'}
           </option>)}
         </select>
-        <small>{visibleNeighborhoods.length} asentamientos coinciden con la búsqueda.</small>
-        <small>Fuente: INEGI, Delimitación de colonias y otros asentamientos humanos 2024.</small>
+        <small className="filter-meta">{visibleNeighborhoods.length} asentamientos coinciden con la búsqueda.</small>
+        <small className="filter-meta">Fuente: INEGI, Delimitación de colonias y otros asentamientos humanos 2024.</small>
       </section>
       {view === 'active' && (import.meta.env.VITE_MAPBOX_TOKEN
-        ? <Suspense fallback={<p>Cargando mapa…</p>}><IncidentMap token={session.access_token} apiUrl={apiUrl} neighborhoodId={neighborhoodId} onSelect={setSelectedId} /></Suspense>
+        ? <Suspense fallback={<div className="card loading-center"><LoadingMark label="Cargando mapa…" /></div>}><IncidentMap token={session.access_token} apiUrl={apiUrl} neighborhoodId={neighborhoodId} onSelect={setSelectedId} /></Suspense>
         : <section className="card"><p>Configura VITE_MAPBOX_TOKEN para mostrar el mapa.</p></section>)}
+      </div>
       <section className="card">
       <div className="section-head"><div><h2>{view === 'active' ? 'Incidentes activos' : 'Completados y descartados'}</h2><p>{view === 'active' ? 'Pendientes de atención, ordenados por fecha.' : 'Registros finalizados de solo lectura.'}</p></div><button className="secondary" onClick={() => void refresh()} disabled={busy}>Actualizar</button></div>
       <div className="list-tabs">
         <button className={view === 'active' ? '' : 'secondary'} aria-pressed={view === 'active'} onClick={() => void switchView('active')} disabled={busy}>Activos</button>
         <button className={view === 'closed' ? '' : 'secondary'} aria-pressed={view === 'closed'} onClick={() => void switchView('closed')} disabled={busy}>Completados y descartados</button>
       </div>
+      {incidents.length === 0 && busy ? <div role="status" aria-label="Cargando incidentes"><div className="skeleton" /><div className="skeleton" /><div className="skeleton" /></div> : null}
       {incidents.length === 0 && !busy ? <p>No hay incidentes para mostrar.</p> : null}
       {incidents.length > 0 && <div className="table-wrap"><table>
-        <thead><tr><th>Incidente</th><th>Estado</th><th>Gravedad</th><th>Prioridad</th><th>Reportes</th><th>Fecha</th></tr></thead>
+        <thead><tr><th scope="col">Incidente</th><th scope="col">Estado</th><th scope="col">Gravedad</th><th scope="col">Prioridad</th><th scope="col">Reportes</th><th scope="col">Fecha</th></tr></thead>
         <tbody>{incidents.map((item) => <tr key={item.id}>
           <td><button className="link-button" onClick={() => setSelectedId(item.id)}>{item.title}</button><small>{item.category.name}</small></td>
-          <td>{statusNames[item.status] || item.status}</td>
+          <td><span className={`status-pill status-${item.status}`}>{statusNames[item.status] || item.status}</span></td>
           <td>{severityNames[item.severity] || item.severity}</td>
           <td><span className={`priority ${item.priority_level}`}>{item.priority_score.toFixed(2)} · {severityNames[item.priority_level] || item.priority_level}</span></td>
           <td>{item.reports_count}</td><td>{new Date(item.created_at).toLocaleString('es-MX')}</td>
         </tr>)}</tbody>
       </table></div>}
       {nextCursor && <button className="secondary more" onClick={() => void refresh(nextCursor)} disabled={busy}>Cargar más</button>}
-      {busy && <p>Actualizando…</p>}
+      {busy && incidents.length > 0 && <p role="status" className="muted">Actualizando…</p>}
       </section>
     </>}
   </main>

@@ -7,6 +7,40 @@
 **Tiempo restante:** sin estimación fiable hasta medir horas efectivas de P0  
 **Próxima tarea:** revisión final de la demo y sus datos ficticios, o la siguiente funcionalidad que el usuario priorice.
 
+## Publicación de la versión 2 — 19 de noviembre de 2026
+
+La versión 2 reúne el rediseño de móvil y dashboard, la bienvenida, la voz desde el primer paso, el logo de ciudad y pulso, las mejoras de formulario y grabación, y el conteo de incidentes activos por colonia. La publicación se identifica con la etiqueta Git `v2.0.0`. Antes de preparar el commit se verificó que los archivos `.env` siguen ignorados y que los archivos previstos no contienen patrones de credenciales.
+
+## Logo de Pulso Urbano — 19 de noviembre de 2026
+
+Se adaptó el logo aportado por el usuario (ciudad y pulso) a azul marino `#142641` y cian `#00A6BC`. El símbolo sustituye al icono anterior en la bienvenida, el encabezado móvil y web, la pestaña web y los indicadores de carga. Se preparó una versión transparente para el icono adaptable Android. La frase de bienvenida y la lógica de las pantallas no cambiaron.
+
+**Verificación:** `npx tsc --noEmit` y `npm run lint` pasaron en móvil; `npm run build` y `npm run lint` pasaron en dashboard. El usuario confirmó que el logo se ve bien en la bienvenida, el formulario, el panel y las cargas tras reiniciar Expo y recargar el dashboard. El icono de la aplicación instalada requiere una nueva compilación para verse fuera de Expo Go.
+
+## Bienvenida, voz inicial y hover de incidentes — 19 de noviembre de 2026
+
+`mobile/WelcomeScreen.tsx` muestra PULSO URBANO, la frase solicitada y el icono anterior de la app con una sola animación. Se quitó el segundo personaje de carga simultáneo; si la carga inicial tarda más, aparece un mensaje breve hasta que termine. `mobile/App.tsx` mantiene la bienvenida aproximadamente 1,5 segundos y sale con un desvanecimiento que respeta movimiento reducido. El mismo grabador de `mobile/VoiceRecorder.tsx` se movió al bloque 01, conserva el servicio de transcripción/IA y ahora permite cancelar y borrar el audio sin procesarlo. Los campos de categoría y descripción siguen editables, con selección manual y revisión antes de enviar. `dashboard/src/App.css` deja el título oscuro y coloca su regla de hover, foco y pulsación después del estilo general de botones para que el fondo azul tenue no sea sobrescrito.
+
+**Verificación:** `npx tsc --noEmit` y `npm run lint` pasaron en móvil; `npm run build` y `npm run lint` pasaron en dashboard tras la corrección. El usuario comprobó en Expo Go que voz inicial, extracción, edición, cancelación y selección manual funcionan. También confirmó que la bienvenida corregida muestra un solo logo y pasa al formulario. Queda pendiente comprobar visualmente el hover/foco corregidos con sesión real en el dashboard; no se marca ese ajuste como terminado hasta esa comprobación.
+
+## Rediseño UI/UX de Pulso Urbano — 19 de noviembre de 2026
+
+Se analizaron las cuatro referencias entregadas y las pantallas actuales. La identidad y sus decisiones están en `docs/design-system.md`: azul marino y cian, violeta moderado, superficies claras, tipografía del sistema, botones grandes, tarjetas con jerarquía y colores de estado con texto. Móvil agrupó el formulario en problema, descripción, fotografías y ubicación, conservando voz, revisión, envío y confirmaciones cercanas. El dashboard reorganizó filtro y mapa, mejoró tabla, detalle e inicio de sesión, y agregó estados de carga reales. El indicador “cuadra” animado se implementó en ambos clientes y respeta movimiento reducido. Se creó un icono original de la misma cuadra para móvil y dashboard. No hubo cambios de API ni base de datos para este rediseño, ni se instalaron dependencias.
+
+**Comprobaciones:** `npx tsc --noEmit` y `npm run lint` pasaron en móvil; la exportación iOS final incluyó el nuevo icono y pasó fuera del aislamiento porque Hermes no pudo escribir en la carpeta temporal del sandbox. `npm run build` y `npm run lint` pasaron en el dashboard. Una captura headless a 768 px mostró el acceso completo; la captura a 375 px quedó recortada por el viewport mínimo de Chrome headless y no permitió medir el diseño a ese ancho. El usuario comprobó en el navegador, con sesión real, filtro, mapa, tabla, detalle y regreso a la lista. En iPhone comprobó que todos los controles se ven completos y que un reporte ficticio con voz, foto, GPS y revisión se registra con folio. No se observaron regresiones en esas pruebas. El icono de inicio como aplicación instalada aún no se ha probado; Expo Go y el bundle sí cargan el nuevo recurso.
+
+## Conteo de incidentes activos por colonia — 19 de noviembre de 2026
+
+`GET /api/v1/neighborhoods` ahora cuenta solo incidentes cuyo estado no sea `resolved` ni `discarded`; los conserva en la lista de finalizados. El selector del dashboard indica explícitamente «incidente(s) activo(s)» y el contrato en `docs/api.md` refleja el criterio. Se amplió la prueba de integración para comparar el conteo de una colonia contra PostgreSQL, priorizando una con incidentes finalizados.
+
+**Verificación:** `npm run build` y `npm run lint` pasaron en el dashboard. `tests.test_neighborhood_filter` pasó contra la base de demo con acceso de red: el conteo del catálogo coincidió con el número de incidentes activos. Tras recargar y buscar «UNIVERSIDAD BONATERRA», el usuario confirmó que el selector muestra «incidentes activos» y excluye finalizados. No se cambió el filtro de la lista ni del mapa.
+
+## Ajuste del formulario y la grabación — 19 de noviembre de 2026
+
+Se actualizó `mobile/App.tsx` para pedir categoría, descripción, gravedad elegida y ubicación GPS antes de abrir la revisión. Si falta alguno, aparece la alerta exacta solicitada. «¿Desde cuándo?» y fotografías siguen siendo opcionales. Se quitó el aviso inicial de demo y se acortaron instrucciones y mensajes técnicos. `mobile/VoiceRecorder.tsx` limita la grabación a 10 segundos tanto en Expo Audio como en el temporizador de respaldo; conserva el envío al detenerla antes y la eliminación del archivo temporal. `backend/app/voice_routes.py` rechaza audio que supere 10 segundos y se ajustó la prueba correspondiente.
+
+**Verificación:** `npx tsc --noEmit` y `npm run lint` pasaron en móvil; las seis pruebas de `tests.test_voice_routes` pasaron en backend, incluido el rechazo de 11 segundos. La búsqueda del código fuente relacionado no encontró textos ni límites de grabación de 30 segundos. En Expo Go, el usuario confirmó que la alerta exacta aparece sin avanzar de pantalla; una grabación se detuvo sola a los 10 segundos y otra se detuvo manualmente antes del límite. Ambas se transcribieron y dejaron editar la descripción. No quedan errores conocidos de este ajuste.
+
 ## Estado inicial
 
 El repositorio contenía `PLAN.md` y los tres documentos de diseño. En P0.1 se inicializó Git y se crearon las bases de Expo, Vite y FastAPI. En P0.3 se aplicó la migración inicial de tablas y catálogos. En ese momento las funciones P0 todavía no existían; los avances posteriores se registran abajo.

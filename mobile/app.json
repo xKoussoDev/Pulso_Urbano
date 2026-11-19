@@ -1,32 +1,30 @@
 {
   "expo": {
-    "name": "Inteligencia Urbana",
+    "name": "Pulso Urbano",
     "slug": "inteligencia-urbana",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/pulso-icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "backgroundColor": "#F4F7FB",
+        "foregroundImage": "./assets/pulso-foreground.png"
       },
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/pulso-icon.png"
     },
     "plugins": [
       "expo-sqlite",
       [
         "expo-audio",
         {
-          "microphonePermission": "Permite que Inteligencia Urbana use el micrófono para reportes ficticios."
+          "microphonePermission": "Permite que Pulso Urbano use el micrófono para describir un problema."
         }
       ],
       [

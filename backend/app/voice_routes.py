@@ -17,6 +17,7 @@ from .report_routes import EMAIL, PHONE
 router = APIRouter(prefix="/api/v1")
 MAX_AUDIO_BYTES = 10 * 1024 * 1024
 SAMPLE_RATE = 16000
+MAX_AUDIO_SECONDS = 10
 transcription_slot = BoundedSemaphore(1)
 PERSONAL_HINT = re.compile(
     r"\b(?:me llamo|mi nombre es|mi tel[eé]fono|mi celular|mi n[uú]mero es|mi correo|vivo en|mi casa|mi domicilio|mi direcci[oó]n)\b"
@@ -74,8 +75,8 @@ def process_voice_report(audio: UploadFile = File(...), _user: User = Depends(re
         raise error(422, "VALIDATION_ERROR", "No se pudo leer el audio") from exc
     if len(samples) == 0:
         raise error(422, "VALIDATION_ERROR", "El audio está vacío")
-    if len(samples) > 30 * SAMPLE_RATE:
-        raise error(422, "VALIDATION_ERROR", "El audio supera 30 segundos")
+    if len(samples) > MAX_AUDIO_SECONDS * SAMPLE_RATE:
+        raise error(422, "VALIDATION_ERROR", "El audio supera 10 segundos")
     if max(abs(float(samples.max())), abs(float(samples.min()))) < 0.003:
         return manual_draft("TRANSCRIPTION_UNAVAILABLE")
 
